@@ -35,7 +35,7 @@ export function ChatMessages({ messages }: ChatMessagesProps) {
   return (
     <ScrollArea className="flex-1" viewportRef={scrollAreaRef}>
       <div className="space-y-6 p-4 md:p-6">
-        {messages.map((message) => (
+        {messages.map(message => (
           <div
             key={message.id}
             className={cn(
@@ -69,15 +69,13 @@ export function ChatMessages({ messages }: ChatMessagesProps) {
                   {message.image && (
                     <Image
                       src={message.image}
-                      alt="User attachment"
-                      width={300}
-                      height={300}
-                      className="max-h-[300px] w-auto rounded-md object-contain"
+                      alt="Chat attachment"
+                      width={400}
+                      height={400}
+                      className="max-h-[400px] w-auto rounded-md object-contain"
                     />
                   )}
-                  {message.audio && (
-                    <audio controls src={message.audio} className="h-10 w-full" />
-                  )}
+                  {message.audio && <audio controls src={message.audio} className="h-10 w-full" />}
                   {message.text && (
                     <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.text}</p>
                   )}

@@ -3,8 +3,11 @@
 import { useState } from 'react';
 import { ChatInput, type Attachment } from '@/components/chat-input';
 import { ChatMessages, type Message } from '@/components/chat-messages';
-import { generateHints, type GenerateHintsInput } from '@/ai/flows/generate-hints';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  generateMultimodalResponse,
+  type GenerateMultimodalResponseInput,
+} from '@/ai/flows/generate-multimodal-response';
+import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -37,10 +40,14 @@ export default function Home() {
     };
 
     const loadingMessageId = `assistant-${Date.now()}`;
-    setMessages(prev => [...prev, userMessage, { id: loadingMessageId, role: 'assistant', isLoading: true }]);
+    setMessages(prev => [
+      ...prev,
+      userMessage,
+      { id: loadingMessageId, role: 'assistant', isLoading: true },
+    ]);
 
     try {
-      const aiInput: GenerateHintsInput = {
+      const aiInput: GenerateMultimodalResponseInput = {
         questionText: text,
       };
 
@@ -53,18 +60,19 @@ export default function Home() {
         }
       }
 
-      const response = await generateHints(aiInput);
+      const response = await generateMultimodalResponse(aiInput);
 
       const assistantMessage: Message = {
-        id: loadingMessageId, 
+        id: loadingMessageId,
         role: 'assistant',
-        text: response.hints.join('\n\n') || "I'm not sure how to help with that. Could you try rephrasing your question?",
+        text: response.textResponse,
+        image: response.imageResponse,
+        audio: response.audioResponse,
       };
-      
-      setMessages(prev => prev.map(msg => msg.id === loadingMessageId ? assistantMessage : msg));
 
+      setMessages(prev => prev.map(msg => (msg.id === loadingMessageId ? assistantMessage : msg)));
     } catch (error) {
-      console.error('Error generating hints:', error);
+      console.error('Error generating response:', error);
       toast({
         variant: 'destructive',
         title: 'An error occurred',
@@ -75,7 +83,7 @@ export default function Home() {
         role: 'assistant',
         text: 'Sorry, I encountered an error. Please try again.',
       };
-      setMessages(prev => prev.map(msg => msg.id === loadingMessageId ? errorMessage : msg));
+      setMessages(prev => prev.map(msg => (msg.id === loadingMessageId ? errorMessage : msg)));
     } finally {
       setIsResponding(false);
     }
