@@ -1,1 +1,6 @@
-// Flows will be imported for their side effects in this file.
+import { config } from 'dotenv';
+config();
+
+import '@/ai/flows/summarize-homework-context.ts';
+import '@/ai/flows/identify-relevant-concepts.ts';
+import '@/ai/flows/generate-hints.ts';
