@@ -124,7 +124,7 @@ Based on this, perform the following reasoning steps and return the result in JS
       output: { schema: ReasoningSchema },
     });
     
-    const reasoningResult = reasoningResponse.output();
+    const reasoningResult = reasoningResponse.output;
     if (!reasoningResult) {
       throw new Error('AI failed to reason about the request.');
     }
