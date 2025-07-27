@@ -154,7 +154,7 @@ Based on this, perform the following reasoning steps and return the result in JS
     }
     
     // Generate Audio if needed
-    const ttsContent = reasoningResult.tts_text_prompt || (reasoningResult.response_type === 'audio' ? textResponse : undefined);
+    const ttsContent = reasoningResult.tts_text_prompt || ((reasoningResult.response_type === 'audio' || reasoningResult.response_type === 'multimodal') ? textResponse : undefined);
     if (ttsContent) {
         const { media } = await ai.generate({
             model: googleAI.model('gemini-2.5-flash-preview-tts'),
