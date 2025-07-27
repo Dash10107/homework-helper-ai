@@ -27,6 +27,7 @@ const GenerateMultimodalResponseInputSchema = z.object({
     .describe(
       "An audio recording of a question, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
     ),
+  userPrefersAudioReply: z.boolean().optional().describe('Whether the user has requested an audio reply.'),
 });
 export type GenerateMultimodalResponseInput = z.infer<typeof GenerateMultimodalResponseInputSchema>;
 
@@ -41,22 +42,13 @@ export type GenerateMultimodalResponseOutput = z.infer<typeof GenerateMultimodal
 
 // The schema for the AI's reasoning process.
 const ReasoningSchema = z.object({
-  intent_summary: z.string().describe("A summary of the student's core question and intent."),
   response_type: z
     .enum(['text', 'image', 'audio', 'multimodal'])
     .describe('The best modality for the response (text, image, audio, or a combination).'),
-  enhanced_prompt: z
-    .string()
-    .describe(
-      'An enhanced, precise prompt for Gemini to generate the final answer, including any inferred context or subject tags.'
-    ),
-  image_prompt: z.string().optional().describe('The prompt for image generation, if needed.'),
-  tts_text_prompt: z
-    .string()
-    .optional()
-    .describe(
-      'The text to be converted to speech. This should be the final explanation, formatted for being spoken naturally.'
-    ),
+  text: z.string().describe('The explanation in text form...'),
+  tts_text: z.string().optional().describe('The same explanation rewritten for audio playback...'),
+  image_prompt: z.string().optional().describe('If an image is needed, describe it for generation...'),
+  confidence: z.number().min(0.0).max(1.0).describe('The confidence in the response from 0.0 to 1.0.'),
 });
 
 // Exported function to be called from the frontend
@@ -96,27 +88,54 @@ const generateMultimodalResponseFlow = ai.defineFlow(
     outputSchema: GenerateMultimodalResponseOutputSchema,
   },
   async input => {
-    // Step 1 & 2: Intent Understanding, Reasoning, and Prompt Enhancement
-    const reasoningPrompt = `You are Sage, a multimodal educational assistant for students.
-Your first task is to deeply understand the student's question, which may come in text, image, or audio format.
-Analyze the input, infer any missing context, and determine the best way to respond.
+    const reasoningPrompt = `You are Sage, a multimodal AI tutor helping students understand their homework questions. You accept queries in the form of text, image, or audio, and respond in the best modality (text, image, audio, or a combination). Your primary goal is to give clear, educational answers suited to the student's question and preferred response format.
 
-Student's question:
-- Text: "${input.questionText || 'N/A'}"
-{{#if input.questionImage}}
-- Image: {{media url=input.questionImage}}
-{{/if}}
-{{#if input.questionAudio}}
-- Audio: {{media url=input.questionAudio}}
-{{/if}}
+---
 
-Based on this, perform the following reasoning steps and return the result in JSON format:
-1.  **intent_summary**: Briefly summarize the student's core question.
-2.  **response_type**: Decide the most effective response modality ('text', 'image', 'audio', 'multimodal'). Use 'image' or 'multimodal' if the problem is visual (e.g., geometry, diagrams). Use 'audio' if the query was audio or a spoken explanation is best.
-3.  **enhanced_prompt**: Rewrite the user's query into a clear, complete, and precise prompt for another AI to generate the final answer. Be student-friendly.
-4.  **image_prompt**: If response_type is 'image' or 'multimodal', create a prompt to generate a helpful diagram, sketch, or visual. Otherwise, leave this null.
-5.  **tts_text_prompt**: If response_type is 'audio' or 'multimodal', define the full text to be spoken. This will be the main explanation. Otherwise, leave this null.
-`;
+🎯 Your Mission:
+
+Step 1: Understand the Question
+- Carefully analyze the user’s input:
+  - Text: "${input.questionText || 'N/A'}"
+  {{#if input.questionImage}}
+  - Image: {{media url=input.questionImage}}
+  {{/if}}
+  {{#if input.questionAudio}}
+  - Audio: {{media url=input.questionAudio}}
+  {{/if}}
+- Determine the subject (e.g., math, science, history, coding).
+- Infer the intent and fill in any missing context.
+- Note the user preference for audio: \`user_prefers_audio_reply = ${!!input.userPrefersAudioReply}\`.
+
+Step 2: Decide the Best Response Type
+- Choose the response format based on both:
+  a) The nature of the question (e.g., image if it's about a diagram),
+  b) The user’s preference (if they requested an audio reply).
+- Modalities you can use:
+  - Text explanation
+  - Image (diagram, chart, or annotated visual)
+  - Audio (spoken explanation via TTS)
+  - Combination (e.g., image + audio + text)
+
+Step 3: Generate Helpful Content
+- If responding in audio, prepare clear spoken language suitable for Text-to-Speech (TTS).
+- If generating an image, ensure it is labeled or self-explanatory.
+- If generating text, use a helpful, conversational tone with bullet points or steps if needed.
+
+Step 4: Return a Response Object in the specified JSON format.
+
+---
+
+📌 Guidelines:
+- Be accurate and helpful — no hallucinations.
+- Never guess if unsure. Politely ask for more details.
+- Use simple language that a school student can understand.
+- If user uploads audio: transcribe and treat it as a question.
+- If user uploads image: use OCR or vision reasoning.
+- If user prefers audio response, always include a "tts_text" field.
+---
+
+Now, perform your reasoning and provide the response object in JSON format.`;
 
     const reasoningResponse = await ai.generate({
       prompt: reasoningPrompt.replace('{{media url=input.questionImage}}', input.questionImage ? `{{media url=${input.questionImage}}}` : '').replace('{{media url=input.questionAudio}}', input.questionAudio ? `{{media url=${input.questionAudio}}}` : ''),
@@ -130,16 +149,9 @@ Based on this, perform the following reasoning steps and return the result in JS
     }
 
     // Step 3: Generate Response based on reasoning
-    let textResponse = '';
+    let textResponse = reasoningResult.text;
     let imageResponse: string | undefined = undefined;
     let audioResponse: string | undefined = undefined;
-
-    // Generate Text from enhanced prompt
-    const finalAnswerResponse = await ai.generate({
-        prompt: reasoningResult.enhanced_prompt,
-        model: googleAI.model('gemini-2.0-flash'),
-    });
-    textResponse = finalAnswerResponse.text;
 
     // Generate Image if needed
     if (reasoningResult.image_prompt) {
@@ -154,8 +166,7 @@ Based on this, perform the following reasoning steps and return the result in JS
     }
     
     // Generate Audio if needed
-    const ttsContent = reasoningResult.tts_text_prompt || ((reasoningResult.response_type === 'audio' || reasoningResult.response_type === 'multimodal') ? textResponse : undefined);
-    if (ttsContent) {
+    if (reasoningResult.tts_text) {
         const { media } = await ai.generate({
             model: googleAI.model('gemini-2.5-flash-preview-tts'),
             config: {
@@ -166,7 +177,7 @@ Based on this, perform the following reasoning steps and return the result in JS
                     },
                 },
             },
-            prompt: ttsContent,
+            prompt: reasoningResult.tts_text,
         });
 
         if (media?.url) {

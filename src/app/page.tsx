@@ -10,6 +10,8 @@ import {
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 const fileToDataURI = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -23,6 +25,7 @@ const fileToDataURI = (file: File): Promise<string> => {
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isResponding, setIsResponding] = useState(false);
+  const [userPrefersAudio, setUserPrefersAudio] = useState(false);
   const { toast } = useToast();
 
   const handleSubmit = async (text: string, attachment: Attachment | null) => {
@@ -49,6 +52,7 @@ export default function Home() {
     try {
       const aiInput: GenerateMultimodalResponseInput = {
         questionText: text,
+        userPrefersAudioReply: userPrefersAudio,
       };
 
       if (attachment) {
@@ -92,11 +96,17 @@ export default function Home() {
   return (
     <main className="flex h-screen flex-col items-center bg-background p-4">
       <Card className="flex h-full w-full max-w-4xl flex-col shadow-2xl">
-        <CardHeader className="flex flex-row items-center gap-3 border-b">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-            <Bot className="h-6 w-6 text-primary" />
+        <CardHeader className="flex flex-row items-center justify-between border-b">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
+              <Bot className="h-6 w-6 text-primary" />
+            </div>
+            <CardTitle className="font-headline text-2xl text-primary">Homework Helper AI</CardTitle>
           </div>
-          <CardTitle className="font-headline text-2xl text-primary">Homework Helper AI</CardTitle>
+          <div className="flex items-center space-x-2">
+            <Switch id="audio-preference" checked={userPrefersAudio} onCheckedChange={setUserPrefersAudio} disabled={isResponding}/>
+            <Label htmlFor="audio-preference" className="text-sm font-medium">Prefer Audio Responses</Label>
+          </div>
         </CardHeader>
         <div className="flex flex-1 flex-col overflow-hidden">
           <ChatMessages messages={messages} />
