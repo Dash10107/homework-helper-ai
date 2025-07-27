@@ -1,6 +1,6 @@
 'use server';
 /**
- * @fileOverview A multimodal response generation AI agent.
+ * @fileOverview A multimodal response generation AI agent named Sage.
  *
  * - generateMultimodalResponse - A function that handles the multimodal response generation process.
  * - GenerateMultimodalResponseInput - The input type for the generateMultimodalResponse function.
@@ -37,6 +37,27 @@ const GenerateMultimodalResponseOutputSchema = z.object({
   audioResponse: z.string().optional().describe('A spoken explanation, as a data URI.'),
 });
 export type GenerateMultimodalResponseOutput = z.infer<typeof GenerateMultimodalResponseOutputSchema>;
+
+
+// The schema for the AI's reasoning process.
+const ReasoningSchema = z.object({
+  intent_summary: z.string().describe("A summary of the student's core question and intent."),
+  response_type: z
+    .enum(['text', 'image', 'audio', 'multimodal'])
+    .describe('The best modality for the response (text, image, audio, or a combination).'),
+  enhanced_prompt: z
+    .string()
+    .describe(
+      'An enhanced, precise prompt for Gemini to generate the final answer, including any inferred context or subject tags.'
+    ),
+  image_prompt: z.string().optional().describe('The prompt for image generation, if needed.'),
+  tts_text_prompt: z
+    .string()
+    .optional()
+    .describe(
+      'The text to be converted to speech. This should be the final explanation, formatted for being spoken naturally.'
+    ),
+});
 
 // Exported function to be called from the frontend
 export async function generateMultimodalResponse(
@@ -75,73 +96,84 @@ const generateMultimodalResponseFlow = ai.defineFlow(
     outputSchema: GenerateMultimodalResponseOutputSchema,
   },
   async input => {
-    const { questionText, questionImage, questionAudio } = input;
+    // Step 1 & 2: Intent Understanding, Reasoning, and Prompt Enhancement
+    const reasoningPrompt = `You are Sage, a multimodal educational assistant for students.
+Your first task is to deeply understand the student's question, which may come in text, image, or audio format.
+Analyze the input, infer any missing context, and determine the best way to respond.
 
-    // Construct the main prompt for text and image generation
-    const textPrompt = `You are a friendly and helpful AI tutor for students. Your goal is to provide clear, concise, and engaging explanations.
-
-Analyze the student's question from the provided text, image, or audio.
-
-1.  **Provide a step-by-step text explanation** to answer the question.
-2.  **Determine if a visual aid would be helpful.** If the question involves geometry, diagrams, charts, or complex visual concepts, generate a simple, clear image or diagram to illustrate your explanation. Your response should include a placeholder like "[[GENERATE_IMAGE: A diagram of...]]" where the image should be.
-3.  **Keep your text response separate from the image generation instruction.**
-
-Question (text): ${questionText || 'N/A'}
-{{#if questionImage}}
-Question (image): {{media url=questionImage}}
+Student's question:
+- Text: "${input.questionText || 'N/A'}"
+{{#if input.questionImage}}
+- Image: {{media url=input.questionImage}}
 {{/if}}
-{{#if questionAudio}}
-Question (audio): {{media url=questionAudio}}
+{{#if input.questionAudio}}
+- Audio: {{media url=input.questionAudio}}
 {{/if}}
+
+Based on this, perform the following reasoning steps and return the result in JSON format:
+1.  **intent_summary**: Briefly summarize the student's core question.
+2.  **response_type**: Decide the most effective response modality ('text', 'image', 'audio', 'multimodal'). Use 'image' or 'multimodal' if the problem is visual (e.g., geometry, diagrams). Use 'audio' if the query was audio or a spoken explanation is best.
+3.  **enhanced_prompt**: Rewrite the user's query into a clear, complete, and precise prompt for another AI to generate the final answer. Be student-friendly.
+4.  **image_prompt**: If response_type is 'image' or 'multimodal', create a prompt to generate a helpful diagram, sketch, or visual. Otherwise, leave this null.
+5.  **tts_text_prompt**: If response_type is 'audio' or 'multimodal', define the full text to be spoken. This will be the main explanation. Otherwise, leave this null.
 `;
 
-    // 1. Generate the initial text response (and decide if an image is needed)
-    const llmResponse = await ai.generate({
-      prompt: textPrompt,
+    const reasoningResponse = await ai.generate({
+      prompt: reasoningPrompt.replace('{{media url=input.questionImage}}', input.questionImage ? `{{media url=${input.questionImage}}}` : '').replace('{{media url=input.questionAudio}}', input.questionAudio ? `{{media url=${input.questionAudio}}}` : ''),
       model: googleAI.model('gemini-2.0-flash'),
+      output: { schema: ReasoningSchema },
     });
+    
+    const reasoningResult = reasoningResponse.output();
+    if (!reasoningResult) {
+      throw new Error('AI failed to reason about the request.');
+    }
 
-    let textResponse = llmResponse.text;
+    // Step 3: Generate Response based on reasoning
+    let textResponse = '';
     let imageResponse: string | undefined = undefined;
+    let audioResponse: string | undefined = undefined;
 
-    // 2. Check for image generation request and generate image if needed
-    const imageGenRegex = /\[\[GENERATE_IMAGE: (.*?)\]\]/;
-    const imageMatch = textResponse.match(imageGenRegex);
-    textResponse = textResponse.replace(imageGenRegex, '').trim(); // Clean up the placeholder
+    // Generate Text from enhanced prompt
+    const finalAnswerResponse = await ai.generate({
+        prompt: reasoningResult.enhanced_prompt,
+        model: googleAI.model('gemini-2.0-flash'),
+    });
+    textResponse = finalAnswerResponse.text;
 
-    if (imageMatch) {
-      const imagePrompt = imageMatch[1];
+    // Generate Image if needed
+    if (reasoningResult.image_prompt) {
       const { media } = await ai.generate({
         model: 'googleai/gemini-2.0-flash-preview-image-generation',
-        prompt: imagePrompt,
+        prompt: reasoningResult.image_prompt,
         config: {
           responseModalities: ['TEXT', 'IMAGE'],
         },
       });
       imageResponse = media?.url;
     }
-
-    // 3. Generate text-to-speech from the final text response
-    let audioResponse: string | undefined = undefined;
-    if (textResponse) {
-      const { media } = await ai.generate({
-        model: googleAI.model('gemini-2.5-flash-preview-tts'),
-        config: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Algenib' },
+    
+    // Generate Audio if needed
+    const ttsContent = reasoningResult.tts_text_prompt || (reasoningResult.response_type === 'audio' ? textResponse : undefined);
+    if (ttsContent) {
+        const { media } = await ai.generate({
+            model: googleAI.model('gemini-2.5-flash-preview-tts'),
+            config: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: { voiceName: 'Algenib' },
+                    },
+                },
             },
-          },
-        },
-        prompt: textResponse,
-      });
+            prompt: ttsContent,
+        });
 
-      if (media?.url) {
-        const audioBuffer = Buffer.from(media.url.substring(media.url.indexOf(',') + 1), 'base64');
-        const wavBase64 = await toWav(audioBuffer);
-        audioResponse = `data:audio/wav;base64,${wavBase64}`;
-      }
+        if (media?.url) {
+            const audioBuffer = Buffer.from(media.url.substring(media.url.indexOf(',') + 1), 'base64');
+            const wavBase64 = await toWav(audioBuffer);
+            audioResponse = `data:audio/wav;base64,${wavBase64}`;
+        }
     }
 
     return {
