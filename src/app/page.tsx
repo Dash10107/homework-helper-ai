@@ -3,12 +3,13 @@
 import { useState } from 'react';
 import { ChatInput, type Attachment } from '@/components/chat-input';
 import { ChatMessages, type Message } from '@/components/chat-messages';
+import { WelcomeScreen } from '@/components/welcome-screen';
 import {
   generateMultimodalResponse,
   type GenerateMultimodalResponseInput,
 } from '@/ai/flows/generate-multimodal-response';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
-import { Bot } from 'lucide-react';
+import { BrainCircuit } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -99,17 +100,21 @@ export default function Home() {
         <CardHeader className="flex flex-row items-center justify-between border-b">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10">
-              <Bot className="h-6 w-6 text-primary" />
+              <BrainCircuit className="h-6 w-6 text-primary" />
             </div>
-            <CardTitle className="font-headline text-2xl text-primary">Homework Helper AI</CardTitle>
+            <CardTitle className="font-headline text-2xl text-primary">Sage: Your Multimodal AI Tutor</CardTitle>
           </div>
           <div className="flex items-center space-x-2">
             <Switch id="audio-preference" checked={userPrefersAudio} onCheckedChange={setUserPrefersAudio} disabled={isResponding}/>
-            <Label htmlFor="audio-preference" className="text-sm font-medium">Prefer Audio Responses</Label>
+            <Label htmlFor="audio-preference" className="text-sm font-medium">Prefer Audio</Label>
           </div>
         </CardHeader>
         <div className="flex flex-1 flex-col overflow-hidden">
-          <ChatMessages messages={messages} />
+          {messages.length === 0 ? (
+             <WelcomeScreen onExampleClick={(prompt) => handleSubmit(prompt, null)} />
+          ) : (
+             <ChatMessages messages={messages} />
+          )}
           <div className="border-t bg-card p-4">
             <ChatInput onSubmit={handleSubmit} isResponding={isResponding} />
           </div>

@@ -22,15 +22,15 @@ interface ChatMessagesProps {
 
 export function ChatMessages({ messages }: ChatMessagesProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   useEffect(() => {
-    const viewport = scrollAreaRef.current;
-    if (viewport) {
-      setTimeout(() => {
-        viewport.scrollTo({ top: viewport.scrollHeight, behavior: 'smooth' });
-      }, 100);
-    }
-  }, [messages.length, messages[messages.length - 1]?.text]);
+    scrollToBottom();
+  }, [messages, messages[messages.length - 1]?.text]);
 
   return (
     <ScrollArea className="flex-1" viewportRef={scrollAreaRef}>
@@ -67,13 +67,14 @@ export function ChatMessages({ messages }: ChatMessagesProps) {
               ) : (
                 <div className="space-y-3">
                   {message.image && (
-                    <Image
-                      src={message.image}
-                      alt="Chat attachment"
-                      width={400}
-                      height={400}
-                      className="max-h-[400px] w-auto rounded-md object-contain"
-                    />
+                    <div className="relative aspect-video w-full max-w-md overflow-hidden rounded-lg border">
+                      <Image
+                        src={message.image}
+                        alt="Chat attachment"
+                        fill
+                        className="object-contain"
+                      />
+                    </div>
                   )}
                   {message.audio && <audio controls src={message.audio} className="h-10 w-full" />}
                   {message.text && (
@@ -92,6 +93,7 @@ export function ChatMessages({ messages }: ChatMessagesProps) {
             )}
           </div>
         ))}
+         <div ref={messagesEndRef} />
       </div>
     </ScrollArea>
   );
