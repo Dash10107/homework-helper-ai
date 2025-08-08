@@ -2,7 +2,6 @@
 
 Sage is an intelligent, multimodal AI-powered homework assistant designed to help students learn more effectively. Built with a cutting-edge tech stack, Sage can understand questions in text, image, or audio format and respond with clear, accurate answers in the best modality—be it text, a generated diagram, a spoken explanation, or a combination of all three.
 
-![Sage Screenshot](https://placehold.co/800x600.png?text=Sage+UI)
 
 ## ✨ Features
 
@@ -28,7 +27,7 @@ To run this project locally, follow these steps:
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository-url>
+    git clone https://github.com/Dash10107/helper-ai
     ```
 
 2.  **Install dependencies:**
